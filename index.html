@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which Came First?</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Lexend:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one lesson card per screen. The core device is a two-station time track (1 First -> 2 Then).
+   Single bright classroom theme by choice, for projectors and student laptops. */
+:root{
+  --sky:#E8F1F6; --card:#FFFFFF; --ink:#1B2838; --muted:#566778; --line:#C6D5E0;
+  --first:#2361C8; --first-soft:#DCE7FB;
+  --then:#14875A; --then-soft:#D6F0E3;
+  --kw:#F4B11C; --kw-soft:#FFF0C2;
+  --bad:#C23F2E; --bad-soft:#FBE2DD;
+  --amber:#9A6200; --amber-line:#E2A31A;
+  --display:"Baloo 2","Trebuchet MS",system-ui,sans-serif;
+  --body:"Lexend","Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --emoji:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
+  color-scheme:light;
+}
+html,body{background:var(--sky);color:var(--ink)}
+body{font-family:var(--body);font-size:18px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,6vw,44px);line-height:1;margin:0;text-wrap:balance}
+h1 .c1{color:var(--first)} h1 .c2{color:var(--then)}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;background:var(--card);padding:5px;border-radius:999px;border:2px solid var(--line)}
+.tab{font:inherit;font-size:15px;font-weight:500;border:0;background:transparent;color:var(--muted);padding:8px 16px;border-radius:999px;cursor:pointer}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{background:var(--ink);color:#fff}
+button:focus-visible{outline:3px solid var(--kw);outline-offset:3px}
+
+.status{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:15px;color:var(--muted)}
+.dots{display:flex;gap:6px}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--card);border:2px solid var(--line)}
+.dot.now{border-color:var(--ink)}
+.dot.ok{background:var(--then);border-color:var(--then)}
+.dot.no{background:var(--bad);border-color:var(--bad)}
+.dot.retry{background:var(--amber-line);border-color:var(--amber-line)}
+.score{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+
+.stage{background:var(--card);border:2px solid var(--line);border-radius:22px;padding:24px clamp(16px,4vw,32px) 28px;display:flex;flex-direction:column;gap:20px}
+.prompt{margin:0;color:var(--muted);font-size:16px}
+.sentence-row{display:flex;align-items:flex-start;gap:12px}
+.sentence{flex:1;min-width:0;margin:0;font-size:clamp(22px,4.6vw,32px);font-weight:500;line-height:1.45;text-wrap:balance}
+.kw{background:var(--kw);border-radius:8px;padding:0 .22em;font-weight:700;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.revealed .e1{color:var(--first);text-decoration:underline 4px var(--first);text-underline-offset:6px}
+.revealed .e2{color:var(--then);text-decoration:underline 4px var(--then);text-underline-offset:6px}
+.speak{flex:none;font:inherit;font-size:15px;font-weight:500;border:2px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer}
+.speak:hover{border-color:var(--ink)}
+
+/* time track */
+.track{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;gap:10px}
+.slot{border:3px dashed var(--first);background:var(--first-soft);border-radius:18px;min-height:168px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px;cursor:pointer;font:inherit;color:inherit;min-width:0}
+.slot.s2{border-color:var(--then);background:var(--then-soft)}
+.slot.filled{border-style:solid}
+.slot.drag{outline:3px solid var(--kw);outline-offset:2px}
+.slot-label{font-family:var(--display);font-weight:800;font-size:20px;line-height:1;color:var(--first)}
+.slot.s2 .slot-label{color:var(--then)}
+.slot-empty{margin:auto;color:var(--muted);font-size:15px;text-align:center}
+.arrow{align-self:center;font-family:var(--display);font-size:40px;font-weight:800;color:var(--muted)}
+
+.tray{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;min-height:150px;align-items:center;border-radius:18px;background:var(--sky);padding:14px}
+.tray-empty{color:var(--muted);font-size:15px}
+.pic{display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:12px 14px 10px;width:150px;max-width:100%;font:inherit;color:var(--ink);cursor:grab;box-shadow:0 4px 0 var(--line);transition:transform .12s}
+.pic:hover{transform:translateY(-2px)}
+.slot .pic{box-shadow:none;cursor:pointer;width:100%;max-width:150px}
+.emo{font-family:var(--emoji);font-size:54px;line-height:1.1}
+.lbl{font-size:16px;font-weight:500;text-align:center;line-height:1.25}
+
+/* build mode */
+.pics{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center}
+.fixed{border-radius:18px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:6px;border:3px solid var(--first);background:var(--first-soft)}
+.fixed.s2{border-color:var(--then);background:var(--then-soft)}
+.fixed .slot-label{color:var(--first)} .fixed.s2 .slot-label{color:var(--then)}
+.frame{font-size:clamp(20px,4.2vw,28px);font-weight:500;line-height:2.1;margin:0}
+.blank{font:inherit;font-size:.82em;display:inline-block;min-width:7.5em;border:0;border-bottom:3px solid var(--ink);background:var(--sky);border-radius:8px 8px 0 0;padding:0 .4em;cursor:pointer;color:var(--ink);line-height:1.6;vertical-align:baseline}
+.blank.filled{background:var(--kw-soft)}
+.blank.c1{background:var(--first-soft);border-color:var(--first);color:var(--first)}
+.blank.c2{background:var(--then-soft);border-color:var(--then);color:var(--then)}
+.tiles{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;min-height:64px;align-items:center;background:var(--sky);border-radius:18px;padding:12px}
+.tile{font:inherit;font-size:18px;font-weight:500;background:var(--card);color:var(--ink);border:2px solid var(--line);box-shadow:0 4px 0 var(--line);border-radius:12px;padding:8px 16px;cursor:pointer}
+
+/* true or silly */
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.choice{font-family:var(--display);font-weight:800;font-size:clamp(22px,4.5vw,30px);border-radius:18px;border:3px solid var(--then);background:var(--then-soft);color:var(--then);padding:18px 10px;cursor:pointer;line-height:1.1}
+.choice.silly{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
+.choice[disabled]{opacity:.45;cursor:default}
+.choice.picked{opacity:1;box-shadow:0 0 0 4px var(--kw)}
+.claim{display:flex;align-items:center;justify-content:center;gap:10px;font-size:16px;flex-wrap:wrap}
+.claim .emo{font-size:40px}
+
+.actions{display:flex;justify-content:center;gap:12px}
+.btn{font:inherit;font-weight:700;font-size:19px;border:0;border-radius:14px;background:var(--ink);color:#fff;padding:12px 34px;cursor:pointer;box-shadow:0 4px 0 #0b131d}
+.btn[disabled]{background:var(--line);color:var(--muted);box-shadow:none;cursor:default}
+.btn.ghost{background:var(--card);color:var(--ink);border:2px solid var(--ink);box-shadow:none}
+
+.fb{border-radius:16px;padding:14px 18px;font-size:18px;display:flex;flex-direction:column;gap:6px}
+.fb.ok{background:var(--then-soft);border:2px solid var(--then)}
+.fb.no{background:var(--bad-soft);border:2px solid var(--bad)}
+.fb.try{background:var(--kw-soft);border:2px solid var(--amber-line)}
+.fb.try .fb-head{color:var(--amber)}
+.tries-left{margin:0;font-weight:700;color:var(--amber);font-size:16px}
+.fb-head{font-family:var(--display);font-weight:800;font-size:24px;line-height:1.1}
+.fb.ok .fb-head{color:var(--then)} .fb.no .fb-head{color:var(--bad)}
+.fb p{margin:0}
+.c1{color:var(--first);font-weight:700} .c2{color:var(--then);font-weight:700}
+.kwc{background:var(--kw);border-radius:6px;padding:0 .2em}
+
+/* rules strip */
+.rules{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.rule{background:var(--card);border:2px solid var(--line);border-radius:16px;padding:12px 16px;display:flex;flex-direction:column;gap:2px}
+.rule-word{font-family:var(--display);font-weight:800;font-size:24px;line-height:1.1}
+.rule p{margin:0;font-size:16px}
+.rules-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.rules-head h2{font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
+.toggle{font:inherit;font-size:14px;border:2px solid var(--line);background:var(--card);border-radius:999px;padding:4px 12px;cursor:pointer;color:var(--ink)}
+
+.end{text-align:center;display:flex;flex-direction:column;gap:14px;align-items:center;padding:12px 0}
+.stars{font-family:var(--emoji);font-size:56px;letter-spacing:6px}
+.end h2{font-family:var(--display);font-weight:800;font-size:40px;margin:0;line-height:1}
+
+/* progress band */
+.band{display:grid;grid-template-columns:auto 1fr auto;gap:10px 16px;align-items:center;border-radius:20px;padding:14px 18px;border:3px solid var(--line);background:var(--card)}
+.band.green{border-color:var(--then);background:var(--then-soft)}
+.band.amber{border-color:var(--amber-line);background:var(--kw-soft)}
+.band.red{border-color:var(--bad);background:var(--bad-soft)}
+.who{font-family:var(--display);font-weight:800;font-size:clamp(26px,5vw,38px);line-height:1;display:flex;align-items:center;gap:12px;min-width:0;overflow-wrap:anywhere}
+.light{width:28px;height:28px;border-radius:50%;background:var(--line);flex:none;border:3px solid var(--card)}
+.green .light{background:var(--then)} .amber .light{background:var(--amber-line)} .red .light{background:var(--bad)}
+.state{font-weight:700;font-size:20px;color:var(--muted)}
+.green .state{color:var(--then)} .amber .state{color:var(--amber)} .red .state{color:var(--bad)}
+.reset{font:inherit;font-size:14px;border:2px solid var(--line);background:var(--card);color:var(--muted);border-radius:999px;padding:4px 12px;cursor:pointer}
+.reset.armed{border-color:var(--bad);color:var(--bad);font-weight:700}
+.modes{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.mchip{font-size:15px;background:var(--card);border:2px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--muted)}
+.mchip b{color:var(--ink);font-weight:700}
+.mchip .st{color:var(--amber-line);letter-spacing:1px}
+.mchip.cur{border-color:var(--ink)}
+.help{grid-column:1/-1;margin:0;font-weight:700;color:var(--bad);font-size:18px}
+.namebox{display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;padding:20px 0}
+.nm-label{font-family:var(--display);font-weight:800;font-size:clamp(26px,5vw,34px);line-height:1.1}
+.namebox .winput{max-width:360px;text-align:center;font-size:24px}
+
+/* listen mode */
+.listen-bar{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.lcards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.lcard{display:flex;flex-direction:column;align-items:center;gap:6px;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:12px 8px;font:inherit;color:var(--ink);cursor:pointer;box-shadow:0 4px 0 var(--line);min-width:0}
+.lcard[disabled]{cursor:default}
+.lcard.numbered{border-color:var(--ink)}
+.nbox{width:50px;height:50px;border:3px solid var(--ink);border-radius:8px;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:30px;line-height:1;background:var(--card);color:var(--ink)}
+.lcard.right{border-color:var(--then);background:var(--then-soft);box-shadow:none}
+.lcard.right .nbox{border-color:var(--then);color:var(--then)}
+.lcard.wrong{border-color:var(--bad);background:var(--bad-soft);box-shadow:none}
+.lcard.wrong .nbox{border-color:var(--bad);color:var(--bad);text-decoration:line-through}
+.fix{font-weight:700;color:var(--bad);font-size:15px}
+.ptext{margin:0;font-size:19px;line-height:1.8;background:var(--sky);border-radius:14px;padding:14px 16px}
+.ev{text-decoration:underline 3px var(--first);text-underline-offset:5px}
+.stepn{display:inline-grid;place-items:center;width:1.45em;height:1.45em;border-radius:50%;background:var(--first);color:#fff;font-family:var(--display);font-weight:800;font-size:.7em;margin-left:4px;vertical-align:.25em;line-height:1}
+
+/* write mode */
+.clause{margin:0;font-weight:700;text-align:center;font-size:17px;line-height:1.3}
+.wrows{display:flex;flex-direction:column;gap:14px}
+.wrow{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:2px solid var(--line);border-radius:16px;background:var(--card)}
+.wrow.ok{border-color:var(--then);background:var(--then-soft)}
+.wrow.no{border-color:var(--bad);background:var(--bad-soft)}
+.wlabel{font-size:19px;font-weight:500;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted)}
+.wlabel .kw{color:var(--ink)}
+.wnum{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;font-weight:700;font-size:15px;flex:none}
+.winput{font:inherit;font-size:20px;width:100%;box-sizing:border-box;padding:10px 12px;border:2px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);min-width:0}
+.winput:focus{outline:3px solid var(--kw);outline-offset:1px;border-color:var(--ink)}
+.winput[readonly]{background:transparent;border-color:transparent;font-weight:500}
+.wfb{margin:0;font-size:16px;font-weight:500}
+.wrow.ok .wfb{color:var(--then)} .wrow.no .wfb{color:var(--bad)}
+.wmodel{margin:0;font-size:18px}
+.wmodel::before{content:"Answer: ";color:var(--muted);font-weight:500}
+@media (max-width:560px){
+  .band{grid-template-columns:1fr auto}
+  .reset{grid-column:1/-1;justify-self:start}
+  .track,.pics{grid-template-columns:1fr 1fr}
+  .arrow{display:none}
+  .rules{grid-template-columns:1fr}
+  .lcards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pic{width:132px}
+  .emo{font-size:46px}
+  .sentence-row{flex-direction:column}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Which Came <span class="c1">First</span>?</h1>
+    <div class="tabs" role="tablist" aria-label="Activity">
+      <button class="tab" role="tab" id="tab-order" data-mode="order" aria-selected="true">Order the pictures</button>
+      <button class="tab" role="tab" id="tab-build" data-mode="build" aria-selected="false">Build the sentence</button>
+      <button class="tab" role="tab" id="tab-silly" data-mode="silly" aria-selected="false">True or silly?</button>
+      <button class="tab" role="tab" id="tab-write" data-mode="write" aria-selected="false">Write it 4 ways</button>
+      <button class="tab" role="tab" id="tab-listen" data-mode="listen" aria-selected="false">Listen and order</button>
+    </div>
+  </header>
+
+  <div class="band new" id="band" aria-live="polite">
+    <div class="who"><span class="light" aria-hidden="true"></span><span id="who">—</span></div>
+    <span class="state" id="state">Just started</span>
+    <button class="reset" type="button" id="reset">New student</button>
+    <div class="modes" id="modes"></div>
+    <p class="help" id="help" hidden></p>
+  </div>
+
+  <div class="status">
+    <span id="qnum">Question 1 of 10</span>
+    <div class="dots" id="dots" aria-hidden="true"></div>
+    <span class="score" id="score">Score: 0</span>
+  </div>
+
+  <main class="stage" id="stage" aria-live="polite"></main>
+
+  <section aria-labelledby="rules-h">
+    <div class="rules-head">
+      <h2 id="rules-h">Remember</h2>
+      <button class="toggle" id="hint-toggle" aria-pressed="true">Hide hints</button>
+    </div>
+    <div class="rules" id="rules" style="margin-top:8px">
+      <div class="rule">
+        <span class="rule-word"><span class="kwc">after</span> + <span class="c1">1st thing</span></span>
+        <p>After I <span class="c1">showered</span>, I went to the park.</p>
+      </div>
+      <div class="rule">
+        <span class="rule-word"><span class="kwc">before</span> + <span class="c2">2nd thing</span></span>
+        <p>Before I <span class="c2">went to the park</span>, I showered.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// a = what happened FIRST, b = what happened SECOND. s = the swapped order is clearly silly.
+const PAIRS = [
+  {a:{e:'🚿',l:'take a shower',c:'I showered'},            b:{e:'🌳',l:'go to the park',c:'I went to the park'},  s:false},
+  {a:{e:'😴',l:'wake up',c:'I woke up'},                   b:{e:'🦷',l:'brush teeth',c:'I brushed my teeth'},    s:true},
+  {a:{e:'🧼',l:'wash hands',c:'I washed my hands'},        b:{e:'🍱',l:'eat lunch',c:'I ate lunch'},             s:false},
+  {a:{e:'📝',l:'do homework',c:'I did my homework'},       b:{e:'📺',l:'watch TV',c:'I watched TV'},             s:false},
+  {a:{e:'🧦',l:'put on socks',c:'I put on my socks'},      b:{e:'👟',l:'put on shoes',c:'I put on my shoes'},    s:true},
+  {a:{e:'🎫',l:'buy a ticket',c:'I bought a ticket'},      b:{e:'🎬',l:'watch the movie',c:'I watched the movie'},s:true},
+  {a:{e:'🎒',l:'pack my bag',c:'I packed my bag'},         b:{e:'🏫',l:'go to school',c:'I went to school'},     s:false},
+  {a:{e:'🍚',l:'cook rice',c:'I cooked the rice'},         b:{e:'🥢',l:'eat dinner',c:'I ate dinner'},           s:true},
+  {a:{e:'🚌',l:'take the bus',c:'I took the bus'},         b:{e:'🏫',l:'reach school',c:'I reached school'},     s:true},
+  {a:{e:'📖',l:'read the story',c:'I read the story'},     b:{e:'✏️',l:'answer questions',c:'I answered the questions'},s:false},
+  {a:{e:'☔',l:'get wet',c:'I got wet in the rain'},       b:{e:'👕',l:'change clothes',c:'I changed my clothes'},s:true},
+  {a:{e:'🥚',l:'crack the egg',c:'I cracked the egg'},     b:{e:'🍳',l:'fry the egg',c:'I fried the egg'},       s:true},
+  {a:{e:'🔑',l:'unlock the door',c:'I unlocked the door'}, b:{e:'🚪',l:'go inside',c:'I went into the house'},  s:true},
+  {a:{e:'🛒',l:'buy food',c:'I bought some bread'},        b:{e:'🥪',l:'make a sandwich',c:'I made a sandwich'}, s:true}
+];
+const N = 10;
+const $ = s => document.querySelector(s);
+const stage = $('#stage');
+const shuffle = arr => { const a = arr.slice(); for (let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; };
+
+// Sentence patterns. first/second = the order the sentence SAYS things happened.
+function parts(first, second, pat){
+  const f={t:first.c,r:'e1'}, s={t:second.c,r:'e2'};
+  if (pat==='A') return [s,{t:' '},{t:'after',r:'kw'},{t:' '},f,{t:'.'}];
+  if (pat==='B') return [{t:'After',r:'kw'},{t:' '},f,{t:', '},s,{t:'.'}];
+  if (pat==='C') return [f,{t:' '},{t:'before',r:'kw'},{t:' '},s,{t:'.'}];
+  return [{t:'Before',r:'kw'},{t:' '},s,{t:', '},f,{t:'.'}];
+}
+const sentHTML = ps => ps.map(p => p.r ? `<span class="${p.r}">${p.t}</span>` : p.t).join('');
+const plain = ps => ps.map(p => p.t).join('');
+const isAfter = pat => pat==='A' || pat==='B';
+// A and D: the words you read first did NOT happen first
+const tricky = pat => pat==='A' || pat==='D';
+
+function speak(text){
+  try{
+    const syn = window.speechSynthesis; if(!syn) return;
+    syn.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.85;
+    const v = syn.getVoices().find(v => /^en[-_](GB|SG|AU)/i.test(v.lang));
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-GB';
+    syn.speak(u);
+  }catch(e){}
+}
+
+let S;
+
+/* ---------- Progress (saved on this device) ---------- */
+const MODES = {order:'Order', build:'Build', silly:'True or silly', write:'Write 4 ways', listen:'Listen and order'};
+const TAGS = {
+  A:'"___ after ___." sentences', B:'"After ___, ___." sentences',
+  C:'"___ before ___." sentences', D:'"Before ___, ___." sentences',
+  lb:'listening for "before" and "after"', lf:'listening for "began with", "ended with" and "in between"', lr:'listening for "Remember to" steps',
+  comma:'commas', caps:'capital letters', stop:'full stops', words:'copying the words correctly'
+};
+const blankP = () => ({name:'', modes:{}, recent:[]});
+let P = blankP();
+try { const j = JSON.parse(localStorage.getItem('wcf-progress') || 'null'); if (j && typeof j==='object') P = Object.assign(blankP(), j); } catch(e){}
+function saveP(){ try { localStorage.setItem('wcf-progress', JSON.stringify(P)); } catch(e){} }
+function logAnswer(ok, tags){
+  P.recent.push({ok, tags: ok ? [] : (tags || [])});
+  if (P.recent.length > 12) P.recent = P.recent.slice(-12);
+  saveP();
+}
+const starsFor = (score, max) => { const r = score/max; return r>=.9?3:r>=.6?2:r>=.3?1:0; };
+function renderBand(){
+  const last = P.recent.slice(-8);
+  let st='new', label='Just started';
+  if (last.length >= 3){
+    const r = last.filter(x=>x.ok).length / last.length;
+    if (r >= .8){ st='green'; label='On track'; }
+    else if (r >= .5){ st='amber'; label='Getting there'; }
+    else { st='red'; label='Needs help'; }
+  }
+  $('#band').className = 'band ' + st;
+  $('#who').textContent = P.name || 'Type your name';
+  $('#state').textContent = label;
+  $('#modes').innerHTML = Object.keys(MODES).map(m => {
+    const d = P.modes[m], cur = S && S.mode===m;
+    const info = d ? `<span class="st">${'★'.repeat(d.best)}${'☆'.repeat(3-d.best)}</span> ${d.rounds} round${d.rounds>1?'s':''}`
+                   : (cur ? 'doing now' : 'not yet');
+    return `<span class="mchip ${cur?'cur':''}"><b>${MODES[m]}</b> ${info}</span>`;
+  }).join('');
+  const cnt = {};
+  P.recent.forEach(x => { if (!x.ok) x.tags.forEach(t => cnt[t] = (cnt[t]||0) + 1); });
+  const top = Object.entries(cnt).filter(([,n]) => n>=2).sort((a,b) => b[1]-a[1]).slice(0,2).map(([t]) => TAGS[t]);
+  const help = $('#help');
+  help.textContent = top.length ? 'Needs help with: ' + top.join(' and ') : '';
+  help.hidden = !top.length;
+}
+let resetTimer;
+$('#reset').addEventListener('click', e => {
+  const b = e.currentTarget;
+  if (b.classList.contains('armed')){
+    clearTimeout(resetTimer); b.classList.remove('armed'); b.textContent = 'New student';
+    P = blankP(); saveP(); newRound('order');
+  } else {
+    b.classList.add('armed'); b.textContent = 'Tap again to clear progress';
+    resetTimer = setTimeout(() => { b.classList.remove('armed'); b.textContent = 'New student'; }, 3500);
+  }
+});
+function newRound(mode){
+  if (mode==='listen'){
+    const qs = shuffle(PASSAGES).map(p => ({p, pos: shuffle([0,1,2,3])}));
+    S = { mode, n:qs.length, max:qs.length, i:0, score:0, results:[], done:false, qs };
+    document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.mode===mode)));
+    return startQ();
+  }
+  const pool = mode==='silly' ? PAIRS.filter(p=>p.s) : PAIRS;
+  const n = mode==='write' ? 5 : N;
+  let pairs=[]; while(pairs.length<n) pairs = pairs.concat(shuffle(pool));
+  let pats=[];  while(pats.length<n)  pats  = pats.concat(shuffle(['A','B','C','D']));
+  const swaps = shuffle(Array.from({length:n},(_,i)=>i<n/2));
+  S = { mode, n, max: mode==='write' ? n*4 : n, i:0, score:0, results:[], done:false,
+        qs: pairs.slice(0,n).map((p,i)=>({p, pat:pats[i], swap:swaps[i]})) };
+  document.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.mode===mode)));
+  startQ();
+}
+function startQ(){
+  S.checked=false; S.slots=[null,null]; S.order=shuffle(['a','b']); S.vals=['','','','']; S.nums=[null,null,null,null]; S.plays=0; S.showText=false; try{ speechSynthesis.cancel(); }catch(e){} S.marks=null; S.tries=0; S.shown=false; S.pick=null;
+  render();
+}
+function next(){
+  S.i++;
+  if (S.i>=S.n){
+    S.done = true;
+    const d = P.modes[S.mode] || {rounds:0, best:0};
+    d.rounds++; d.best = Math.max(d.best, starsFor(S.score, S.max));
+    P.modes[S.mode] = d; saveP();
+  }
+  S.done ? render() : startQ();
+}
+function record(ok){ S.checked=true; S.results[S.i]= ok ? 'first' : false; if(ok) S.score++; logAnswer(ok, [S.qs[S.i].pat]); }
+// Up to 3 tries. Only the first try goes into the progress band; the dot shows amber when fixed on a later try.
+const MAX_TRIES = 3;
+function attempt(ok, tags){
+  S.tries++;
+  if (S.tries===1) logAnswer(ok, tags);
+  if (ok || S.tries>=MAX_TRIES){
+    S.checked = true;
+    S.results[S.i] = ok ? (S.tries===1 ? 'first' : 'later') : false;
+    if (ok) S.score++;
+  }
+}
+const triesLeft = () => { const n = MAX_TRIES - S.tries; return `<p class="tries-left">${n} ${n===1?'try':'tries'} left</p>`; };
+const retryBox = lines => `<div class="fb try"><span class="fb-head">Not yet. Try again!</span>${lines.filter(Boolean).map(l=>`<p>${l}</p>`).join('')}${triesLeft()}</div>`;
+const ruleHint = pat => isAfter(pat)
+  ? 'Hint: <b class="kwc">after</b> goes with the thing that happened <span class="c1">first</span>.'
+  : 'Hint: <b class="kwc">before</b> goes with the thing that happened <span class="c2">second</span>.';
+const okHead = () => S.tries>1 ? 'You fixed it!' : 'Well done!';
+
+function renderStatus(){
+  $('#qnum').textContent = S.done ? 'Finished!' : `${S.mode==='write'?'Picture set':'Question'} ${S.i+1} of ${S.n}`;
+  $('#score').textContent = `Score: ${S.score} / ${S.max}`;
+  $('#dots').innerHTML = Array.from({length:S.n},(_,k)=>{
+    const r=S.results[k]; const c = r==='first'?'ok':r==='later'?'retry':r===false?'no':(k===S.i&&!S.done?'now':'');
+    return `<span class="dot ${c}"></span>`; }).join('');
+}
+
+function render(){
+  renderBand();
+  renderStatus();
+  if (!P.name) return renderName();
+  if (S.done) return renderEnd();
+  const q=S.qs[S.i];
+  if (S.mode==='order') renderOrder(q);
+  else if (S.mode==='build') renderBuild(q);
+  else if (S.mode==='silly') renderSilly(q);
+  else if (S.mode==='listen') renderListen(q);
+  else renderWrite(q);
+}
+
+const picHTML = (ev,id,tag='button') => `<${tag} class="pic" ${tag==='button'?`type="button" draggable="true" data-card="${id}"`:''} aria-label="${ev.l}"><span class="emo" aria-hidden="true">${ev.e}</span><span class="lbl">${ev.l}</span></${tag}>`;
+const speakBtn = `<button class="speak" type="button" data-act="speak" aria-label="Read the sentence aloud">🔊 Read</button>`;
+
+/* ---------- Mode 1: order the pictures ---------- */
+function renderOrder(q){
+  const ps = parts(q.p.a, q.p.b, q.pat);
+  const ev = id => q.p[id];
+  const slot = k => {
+    const id=S.slots[k];
+    return `<div class="slot s${k+1} ${id?'filled':''}" data-slot="${k}" role="button" tabindex="0" aria-label="${k===0?'First':'Then'} box">
+      <span class="slot-label">${k===0?'1 · First':'2 · Then'}</span>
+      ${id ? picHTML(ev(id),id,'div') : `<span class="slot-empty">Put a picture here</span>`}
+    </div>`;
+  };
+  const left = S.order.filter(id => !S.slots.includes(id));
+  stage.innerHTML = `
+    <p class="prompt">Read the sentence. Put the pictures in the order they happened.</p>
+    <div class="sentence-row"><p class="sentence ${S.checked?'revealed':''}">${sentHTML(ps)}</p>${speakBtn}</div>
+    <div class="track">${slot(0)}<div class="arrow" aria-hidden="true">→</div>${slot(1)}</div>
+    ${S.checked ? '' : `<div class="tray">${left.length ? left.map(id=>picHTML(ev(id),id)).join('') : '<span class="tray-empty">All placed. Press Check!</span>'}</div>`}
+    ${S.checked ? orderFeedback(q) : (S.tries ? retryBox(['Read the sentence again. Look at the yellow word. Tap a picture in a box to move it back.', S.tries>=2 ? ruleHint(q.pat) : '']) : '')}
+    <div class="actions">${S.checked
+      ? `<button class="btn" type="button" data-act="next">${S.i===S.n-1?'See my score':'Next'}</button>`
+      : `<button class="btn" type="button" data-act="check-order" ${S.slots.every(Boolean)?'':'disabled'}>Check</button>`}</div>`;
+  S.say = plain(ps);
+}
+function orderFeedback(q){
+  const ok = S.results[S.i];
+  const rule = isAfter(q.pat)
+    ? `<b class="kwc">after</b> goes with the <span class="c1">first</span> thing: <span class="c1">${q.p.a.c}</span>.`
+    : `<b class="kwc">before</b> goes with the <span class="c2">second</span> thing: <span class="c2">${q.p.b.c}</span>.`;
+  const order = `First <span class="c1">${q.p.a.l}</span>, then <span class="c2">${q.p.b.l}</span>.`;
+  const warn = (!ok && tricky(q.pat)) ? `<p>Careful! The words you read first did not happen first.</p>` : '';
+  return `<div class="fb ${ok?'ok':'no'}"><span class="fb-head">${ok?okHead():'Not quite.'}</span>
+    <p>${order}</p><p>${rule}</p>${warn}</div>`;
+}
+function placeCard(id, k){
+  if (S.checked) return;
+  if (k===undefined) k = S.slots.indexOf(null);
+  if (k<0) return;
+  const other = S.slots.indexOf(id); if (other>-1) S.slots[other]=null;
+  S.slots[k]=id; render();
+}
+
+/* ---------- Mode 2: build the sentence ---------- */
+const FRAMES = {
+  A:{bits:['#',' after ','#','.'],   ans:['b','a']},
+  B:{bits:['After ','#',', ','#','.'],ans:['a','b']},
+  C:{bits:['#',' before ','#','.'],  ans:['a','b']},
+  D:{bits:['Before ','#',', ','#','.'],ans:['b','a']}
+};
+function renderBuild(q){
+  const fr = FRAMES[q.pat]; let n=-1;
+  const frame = fr.bits.map(b => {
+    if (b!=='#') return b.replace(/(after|before|After|Before)/, '<span class="kw">$1</span>');
+    n++; const id=S.slots[n];
+    const cls = S.checked && id ? (id==='a'?'c1':'c2') : (id?'filled':'');
+    return `<button type="button" class="blank ${cls}" data-blank="${n}" aria-label="Blank ${n+1}">${id ? q.p[id].c : '&nbsp;'}</button>`;
+  }).join('');
+  const left = S.order.filter(id => !S.slots.includes(id));
+  stage.innerHTML = `
+    <p class="prompt">Look at the pictures. Tap the words to finish the sentence.</p>
+    <div class="pics">
+      <div class="fixed"><span class="slot-label">1 · First</span>${picHTML(q.p.a,'a','div')}</div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="fixed s2"><span class="slot-label">2 · Then</span>${picHTML(q.p.b,'b','div')}</div>
+    </div>
+    <p class="frame">${frame}</p>
+    ${!S.checked && S.tries ? retryBox(['Look at the pictures and the yellow word. Tap a blank to take the words out.', S.tries>=2 ? ruleHint(q.pat) : '']) : ''}
+    ${S.checked ? buildFeedback(q) : `<div class="tiles">${left.length ? left.map(id=>`<button type="button" class="tile" data-tile="${id}">${q.p[id].c}</button>`).join('') : '<span class="tray-empty">Done! Press Check.</span>'}</div>`}
+    <div class="actions">${S.checked
+      ? `<button class="btn" type="button" data-act="next">${S.i===S.n-1?'See my score':'Next'}</button>`
+      : `<button class="btn" type="button" data-act="check-build" ${S.slots.every(Boolean)?'':'disabled'}>Check</button>`}</div>`;
+  S.say = null;
+}
+function buildFeedback(q){
+  const ok = S.results[S.i];
+  const ps = parts(q.p.a,q.p.b,q.pat);
+  const rule = isAfter(q.pat)
+    ? `<b class="kwc">after</b> goes with the <span class="c1">first</span> thing.`
+    : `<b class="kwc">before</b> goes with the <span class="c2">second</span> thing.`;
+  return `<div class="fb ${ok?'ok':'no'}"><span class="fb-head">${ok?okHead():'Not quite.'}</span>
+    ${ok?'':`<p class="revealed">${sentHTML(ps)}</p>`}<p>${rule}</p></div>`;
+}
+
+/* ---------- Mode 3: true or silly ---------- */
+function renderSilly(q){
+  const first = q.swap ? q.p.b : q.p.a, second = q.swap ? q.p.a : q.p.b;
+  const ps = parts(first, second, q.pat);
+  const pick = S.pick;
+  stage.innerHTML = `
+    <p class="prompt">Read the sentence. Does it make sense, or is it silly?</p>
+    <div class="sentence-row"><p class="sentence ${S.checked?'revealed':''}">${sentHTML(ps)}</p>${speakBtn}</div>
+    <div class="choices">
+      <button type="button" class="choice ${S.checked&&pick==='true'?'picked':''}" data-pick="true" ${S.checked?'disabled':''}>Makes sense</button>
+      <button type="button" class="choice silly ${S.checked&&pick==='silly'?'picked':''}" data-pick="silly" ${S.checked?'disabled':''}>Silly!</button>
+    </div>
+    ${S.checked ? sillyFeedback(q, first, second) : ''}
+    ${S.checked ? `<div class="actions"><button class="btn" type="button" data-act="next">${S.i===S.n-1?'See my score':'Next'}</button></div>` : ''}`;
+  S.say = plain(ps);
+}
+function sillyFeedback(q, first, second){
+  const ok = S.results[S.i];
+  return `<div class="fb ${ok?'ok':'no'}"><span class="fb-head">${ok?okHead():'Not quite.'}</span>
+    <div class="claim">This sentence says:
+      <span class="c1">1</span><span class="emo" aria-hidden="true">${first.e}</span> <span class="c1">${first.l}</span>
+      <span aria-hidden="true">→</span>
+      <span class="c2">2</span><span class="emo" aria-hidden="true">${second.e}</span> <span class="c2">${second.l}</span></div>
+    <p>${q.swap ? `That is the wrong way round. It is silly!` : `That is the right order. It makes sense.`}</p></div>`;
+}
+
+/* ---------- Mode 4: write it 4 ways ---------- */
+const WRITE = ['C','D','B','A'];   // same order as the class examples
+const SKEL = {
+  C:'_____ <span class="kw">before</span> _____.',
+  D:'<span class="kw">Before</span> _____, _____.',
+  B:'<span class="kw">After</span> _____, _____.',
+  A:'_____ <span class="kw">after</span> _____.'
+};
+const esc = s => s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const core = s => s.toLowerCase().replace(/[.,!?]/g,' ').replace(/\s+/g,' ').trim();
+function mark(q, pat, val){
+  const exp = plain(parts(q.p.a,q.p.b,pat));
+  const v = val.trim().replace(/\s+/g,' ');
+  if (!v) return {ok:false, msg:'Write a sentence here.'};
+  if (core(v)!==core(exp)){
+    const kw = isAfter(pat) ? 'after' : 'before';
+    if (core(v)===core(plain(parts(q.p.b,q.p.a,pat))))
+      return {ok:false, tags:[pat], msg:'The order is mixed up. Look at the pictures. What happened <span class="c1">first</span>?'};
+    if (!new RegExp('\\b'+kw+'\\b','i').test(v))
+      return {ok:false, tags:[pat], msg:`Use the word <b class="kwc">${kw}</b> in this sentence.`};
+    return {ok:false, tags:['words'], msg:'Check your words. Look at the word help under the pictures.'};
+  }
+  const fixes = [], tags = [];
+  if (v[0]!==v[0].toUpperCase()){ fixes.push('Start with a capital letter.'); tags.push('caps'); }
+  if (/(^|\s)i(\s|,|\.|$)/.test(v)){ fixes.push('Use a capital <b>I</b>.'); if (!tags.includes('caps')) tags.push('caps'); }
+  if (pat==='B' || pat==='D'){
+    const firstPart = exp.split(',')[0];
+    if (!new RegExp('^'+escRe(firstPart)+'\\s*,','i').test(v)){ fixes.push('Put a comma after the first part.'); tags.push('comma'); }
+  } else if (v.includes(',')){ fixes.push('No comma is needed in this sentence.'); tags.push('comma'); }
+  if (!/\.$/.test(v)){ fixes.push('End with a full stop.'); tags.push('stop'); }
+  return fixes.length ? {ok:false, tags, msg:'Almost! '+fixes.join(' ')} : {ok:true};
+}
+function renderWrite(q){
+  const allOk = S.marks && S.marks.every(m=>m.ok);
+  const finished = allOk || S.shown;
+  const rows = WRITE.map((pat,k) => {
+    const m = S.marks && S.marks[k];
+    const lock = S.shown || (m && m.ok);
+    return `<div class="wrow ${m ? (m.ok?'ok':'no') : ''}">
+      <label class="wlabel" for="w${k}"><span class="wnum">${k+1}</span><span>${SKEL[pat]}</span></label>
+      <input class="winput" id="w${k}" data-w="${k}" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(S.vals[k])}" ${lock?'readonly':''}>
+      ${m ? `<p class="wfb">${m.ok ? '✓ Correct!' : m.msg}</p>` : ''}
+      ${S.shown && !(m && m.ok) ? `<p class="wmodel revealed">${sentHTML(parts(q.p.a,q.p.b,pat))}</p>` : ''}
+    </div>`;
+  }).join('');
+  stage.innerHTML = `
+    <p class="prompt">Look at the pictures. Write the same idea in 4 ways.</p>
+    <div class="pics">
+      <div class="fixed"><span class="slot-label">1 · First</span>${picHTML(q.p.a,'a','div')}<p class="clause c1">${q.p.a.c}</p></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="fixed s2"><span class="slot-label">2 · Then</span>${picHTML(q.p.b,'b','div')}<p class="clause c2">${q.p.b.c}</p></div>
+    </div>
+    <div class="wrows">${rows}</div>
+    <div class="actions">${finished
+      ? `<button class="btn" type="button" data-act="next">${S.i===S.n-1?'See my score':'Next pictures'}</button>`
+      : `${S.tries ? triesLeft() : ''}<button class="btn" type="button" data-act="check-write">Check</button>`}</div>`;
+  S.say = null;
+}
+
+/* ---------- Mode 5: listen and order ---------- */
+// {n:phrase} = step n (shown after checking). [[word]] = signal word.
+const PASSAGES = [
+  {type:'i', tags:['lb','lr'], events:[{e:'🥚',l:'boil the eggs'},{e:'🥣',l:'mix eggs with mayo'},{e:'🍞',l:'spread on bread'},{e:'🥪',l:'cut into triangles'}],
+   text:"Let's make egg mayo sandwiches! [[Before]] you {2:mix the eggs with mayonnaise}, {1:boil them for ten minutes} and take off the shells. [[Next]], {3:spread the filling on a slice of bread} and put another slice on top. [[Remember to]] {4:cut the sandwich into triangles} [[before]] serving.",
+   tip:'You hear "mix" first, but "before you mix" means the eggs are boiled first. "Remember to" is still a step in the order.'},
+  {type:'i', tags:['lb'], events:[{e:'💧',l:'soak the seed'},{e:'🌱',l:'plant it in soil'},{e:'💦',l:'water it every day'},{e:'☀️',l:'move to a sunny window'}],
+   text:"Want to grow your own bean plant? {2:Push a bean seed into a pot of soil}, but [[before]] that, {1:soak it in water overnight}. [[After]] planting, {3:water the soil every day}. [[When]] a tiny shoot appears, {4:move the pot to a sunny window}.",
+   tip:'"Before that" points back to planting. So soaking the seed comes first, even though you hear it second.'},
+  {type:'i', tags:['lb'], events:[{e:'📄',l:'fold the card'},{e:'🖍️',l:'draw on the front'},{e:'✏️',l:'write a message'},{e:'✉️',l:'put in an envelope'}],
+   text:"Let's make a get-well card for a classmate! {1:Fold a piece of card in half}. You can {3:write your message inside} [[after]] you {2:draw a big sun on the front}. [[Once]] the ink is dry, {4:put the card into an envelope}.",
+   tip:'"Write your message after you draw" means the drawing comes before the writing.'},
+  {type:'i', tags:['lb'], events:[{e:'♨️',l:'boil the water'},{e:'🍜',l:'put in the noodles'},{e:'🧂',l:'add the seasoning'},{e:'🥣',l:'pour into a bowl'}],
+   text:"Here is how to cook instant noodles. {2:Put the noodles into the pot} only [[after]] {1:the water is boiling}. Cook them for three minutes. Just [[before]] you turn off the fire, {3:add the seasoning}. [[Finally]], {4:pour the noodles into a bowl}.",
+   tip:'You hear "put the noodles in" first, but "only after the water is boiling" means boiling the water comes first.'},
+  {type:'r', tags:['lf','lb'], events:[{e:'🤸',l:'warm-up'},{e:'💪',l:'tug-of-war'},{e:'🏃',l:'relay race'},{e:'🏆',l:'prize presentation'}],
+   text:"Our school held its Sports Day last Friday. It [[began with]] {1:a warm-up led by the teachers} and [[ended with]] {4:a prize presentation}. [[In between]], the P4 classes {3:ran a relay race} [[after]] {2:the teachers and parents had a tug-of-war}.",
+   tip:'You hear the first and last parts early. "In between" gives the middle, and "after" tells you the tug-of-war came before the relay.'},
+  {type:'r', tags:['lb','lf'], events:[{e:'🚋',l:'tram ride'},{e:'🍔',l:'lunch'},{e:'🐘',l:'animal show'},{e:'🧸',l:'gift shop'}],
+   text:"Last Saturday, Mei Ling visited the zoo with her family. [[Before]] they {3:watched the animal show}, they {2:had lunch at the food court}. Their day [[had begun with]] {1:a ride on the tram}. [[At the end of the day]], they {4:bought a soft toy at the gift shop}.",
+   tip:'The first thing you hear is not the first thing they did. "Had begun with" tells you the tram ride came first.'},
+  {type:'r', tags:['lb'], events:[{e:'🪑',l:'move the chairs'},{e:'🧹',l:'sweep the floor'},{e:'🧽',l:'wash the windows'},{e:'☕',l:'hot chocolate'}],
+   text:"On Sunday, Ravi helped his grandmother clean her flat. They {3:washed the windows} only [[after]] they had {2:swept the floor}. [[Before]] they did any of that, they {1:had moved the chairs out of the way}. [[Finally]], Grandma {4:made Ravi a cup of hot chocolate}.",
+   tip:'"Before they did any of that" points back to everything already said. Moving the chairs came first.'},
+  {type:'r', tags:['lf','lb'], events:[{e:'🎵',l:'musical chairs'},{e:'🎩',l:'magic show'},{e:'🍕',l:'eat pizza'},{e:'🗑️',l:'clean up'}],
+   text:"Our class party yesterday was great fun. It [[began with]] {1:a game of musical chairs} and [[ended with]] {4:everyone cleaning up the classroom}. [[Before]] we cleaned up, we {3:ate the pizza} that our teacher had ordered. The pizza arrived [[after]] we {2:watched a magic show by Daniel}.",
+   tip:'Start with "began with" and "ended with". Then use "before" and "after" to fill the middle.'}
+];
+const passHTML = (t, reveal) => t.replace(/\[\[(.+?)\]\]/g,'<span class="kw">$1</span>')
+  .replace(/\{(\d):(.+?)\}/g, reveal ? '<span class="ev">$2</span><span class="stepn">$1</span>' : '$2');
+const passPlain = t => t.replace(/\[\[(.+?)\]\]/g,'$1').replace(/\{\d:(.+?)\}/g,'$1');
+const canSpeak = (() => { try { return 'speechSynthesis' in window; } catch(e){ return false; } })();
+
+function renderListen(q){
+  const p = q.p, left = 2 + S.tries - S.plays;   // 2 listens, plus 1 more after each wrong try
+  const cards = q.pos.map(idx => {
+    const ev = p.events[idx], n = S.nums[idx];
+    const st = S.checked ? (n===idx+1 ? 'right' : 'wrong') : '';
+    return `<button type="button" class="lcard ${n?'numbered':''} ${st}" data-ev="${idx}" ${S.checked?'disabled':''} aria-label="${ev.l}${n?', number '+n:''}">
+      <span class="emo" aria-hidden="true">${ev.e}</span><span class="lbl">${ev.l}</span>
+      <span class="nbox">${n || ''}</span>
+      ${st==='wrong' ? `<span class="fix">Answer: ${idx+1}</span>` : ''}
+    </button>`;
+  }).join('');
+  const playBtn = !canSpeak ? '' : S.checked
+    ? `<button class="btn ghost" type="button" data-act="play">▶ Listen again</button>`
+    : `<button class="btn" type="button" data-act="play" ${left<=0?'disabled':''}>▶ Listen${left>0?` (${left} left)`:''}</button>`;
+  const wordsBtn = (!S.checked && !S.showText && (left<=0 || !canSpeak))
+    ? `<button class="btn ghost" type="button" data-act="showtext">Show the words</button>` : '';
+  const filled = S.nums.every(Boolean);
+  const ok = S.results[S.i];
+  stage.innerHTML = `
+    <p class="prompt">${p.type==='i' ? 'Listen to the instructions.' : 'Listen to the text.'} Then tap the pictures in the order they happen: 1, 2, 3, 4. Tap a picture again to take its number away.</p>
+    <div class="listen-bar">${playBtn}${wordsBtn}</div>
+    ${(S.showText || S.checked) ? `<p class="ptext">${passHTML(p.text, S.checked)}</p>` : ''}
+    <div class="lcards">${cards}</div>
+    ${S.checked ? `<div class="fb ${ok?'ok':'no'}"><span class="fb-head">${ok?okHead():'Not quite.'}</span><p>${p.tip}</p></div>`
+      : S.tries ? retryBox([`${S.right} of 4 pictures ${S.right===1?'is':'are'} in the right place.`, S.tries>=2 ? 'Read the words and look for the yellow signal words.' : 'You can listen one more time. Tap a picture to take its number away.']) : ''}
+    <div class="actions">${S.checked
+      ? `<button class="btn" type="button" data-act="next">${S.i===S.n-1?'See my score':'Next'}</button>`
+      : `<button class="btn" type="button" data-act="check-listen" ${filled?'':'disabled'}>Check</button>`}</div>`;
+  S.say = null;
+}
+
+/* ---------- Name ---------- */
+function renderName(){
+  stage.innerHTML = `<div class="namebox">
+    <label class="nm-label" for="nm">Type your name to start</label>
+    <input class="winput" id="nm" type="text" maxlength="24" autocomplete="off" spellcheck="false">
+    <div class="actions"><button class="btn" type="button" data-act="setname">Start</button></div>
+  </div>`;
+  S.say = null;
+  const nm = document.getElementById('nm'); if (nm) nm.focus();
+}
+function setName(){
+  const nm = document.getElementById('nm'); const v = nm ? nm.value.trim() : '';
+  if (!v){ if (nm) nm.focus(); return; }
+  P.name = v; saveP(); render();
+}
+
+/* ---------- End ---------- */
+function renderEnd(){
+  const st = starsFor(S.score, S.max);
+  stage.innerHTML = `<div class="end">
+    <div class="stars" aria-label="${st} stars">${'⭐'.repeat(st)}${'☆'.repeat(3-st)}</div>
+    <h2>${S.score} out of ${S.max}</h2>
+    <p>${st===3?'Excellent! You know before and after.':st===2?'Good work! Try again to get 3 stars.':'Keep practising. Look for the yellow word each time.'}</p>
+    <div class="actions"><button class="btn" type="button" data-act="again">Play again</button></div>
+  </div>`;
+}
+
+/* ---------- Events ---------- */
+stage.addEventListener('click', e => {
+  const t = e.target.closest('button,[data-slot]'); if (!t) return;
+  const act = t.dataset.act;
+  if (act==='setname') return setName();
+  if (act==='speak') return S.say ? speak(S.say) : null;
+  if (act==='next') return next();
+  if (act==='again') return newRound(S.mode);
+  if (act==='check-order'){ attempt(S.slots[0]==='a' && S.slots[1]==='b', [S.qs[S.i].pat]); return render(); }
+  if (act==='check-write'){
+    const q=S.qs[S.i];
+    S.marks = WRITE.map((p,k)=>mark(q,p,S.vals[k]));
+    const allOk = S.marks.every(m=>m.ok);
+    if (!S.tries){ const c=S.marks.filter(m=>m.ok).length; S.score+=c; S.marks.forEach(m=>logAnswer(m.ok, m.tags)); }
+    S.tries++;
+    if (allOk) S.results[S.i] = S.tries===1 ? 'first' : 'later';
+    else if (S.tries>=MAX_TRIES){ S.shown=true; S.results[S.i]=false; }
+    render();
+    const bad = S.marks.findIndex(m=>!m.ok); if (bad>-1){ const el=document.getElementById('w'+bad); if(el) el.focus(); }
+    return;
+  }
+  if (act==='play'){ const p=S.qs[S.i].p; if (!S.checked) S.plays++; speak(passPlain(p.text)); return render(); }
+  if (act==='showtext'){ S.showText=true; return render(); }
+  if (act==='check-listen'){
+    S.right = S.nums.filter((n,idx) => n===idx+1).length;
+    attempt(S.right===4, S.qs[S.i].p.tags);
+    if (!S.checked && S.tries>=2) S.showText = true;
+    return render();
+  }
+  if (t.dataset.ev!==undefined){
+    if (S.checked) return;
+    const idx=+t.dataset.ev;
+    if (S.nums[idx]) S.nums[idx]=null;
+    else { for (let k=1;k<=4;k++){ if (!S.nums.includes(k)){ S.nums[idx]=k; break; } } }
+    render();
+    const again = stage.querySelector(`[data-ev="${idx}"]`); if (again) again.focus();
+    return;
+  }
+  if (act==='show'){ S.shown=true; return render(); }
+  if (act==='check-build'){ const ans=FRAMES[S.qs[S.i].pat].ans; attempt(S.slots[0]===ans[0] && S.slots[1]===ans[1], [S.qs[S.i].pat]); return render(); }
+  if (t.dataset.card) return placeCard(t.dataset.card);
+  if (t.dataset.slot!==undefined && !S.checked){ const k=+t.dataset.slot; if (S.slots[k]){ S.slots[k]=null; render(); } return; }
+  if (t.dataset.tile){ const k=S.slots.indexOf(null); if(k>-1){ S.slots[k]=t.dataset.tile; render(); } return; }
+  if (t.dataset.blank!==undefined && !S.checked){ const k=+t.dataset.blank; if (S.slots[k]){ S.slots[k]=null; render(); } return; }
+  if (t.dataset.pick && !S.checked){ S.pick=t.dataset.pick; const q=S.qs[S.i]; record((t.dataset.pick==='silly')===q.swap); render(); }
+});
+stage.addEventListener('input', e => { const k=e.target.dataset.w; if (k!==undefined) S.vals[+k]=e.target.value; });
+stage.addEventListener('keydown', e => {
+  if (e.target.id==='nm' && e.key==='Enter'){ e.preventDefault(); return setName(); }
+  if (e.target.dataset && e.target.dataset.w!==undefined && e.key==='Enter'){
+    e.preventDefault();
+    const nxt = document.getElementById('w'+(+e.target.dataset.w+1));
+    if (nxt && !nxt.readOnly) nxt.focus(); else { const b=stage.querySelector('[data-act="check-write"]'); if(b) b.click(); }
+    return;
+  }
+  const s = e.target.closest('[data-slot]');
+  if (s && (e.key==='Enter'||e.key===' ')){ e.preventDefault(); s.click(); }
+});
+// drag and drop (desktop); tapping works everywhere
+stage.addEventListener('dragstart', e => { const c=e.target.closest('[data-card]'); if(c){ e.dataTransfer.setData('text/plain', c.dataset.card); }});
+stage.addEventListener('dragover', e => { const s=e.target.closest('[data-slot]'); if(s){ e.preventDefault(); s.classList.add('drag'); }});
+stage.addEventListener('dragleave', e => { const s=e.target.closest('[data-slot]'); if(s) s.classList.remove('drag'); });
+stage.addEventListener('drop', e => { const s=e.target.closest('[data-slot]'); if(!s) return; e.preventDefault(); placeCard(e.dataTransfer.getData('text/plain'), +s.dataset.slot); });
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => newRound(t.dataset.mode)));
+
+// hints toggle (remembered per browser)
+let hints = true;
+try { const h = localStorage.getItem('wcf-hints'); if (h!==null) hints = h==='1'; } catch(e){}
+function applyHints(){
+  $('#rules').hidden = !hints;
+  const b = $('#hint-toggle'); b.textContent = hints ? 'Hide hints' : 'Show hints'; b.setAttribute('aria-pressed', String(hints));
+}
+$('#hint-toggle').addEventListener('click', () => { hints=!hints; try{ localStorage.setItem('wcf-hints', hints?'1':'0'); }catch(e){} applyHints(); });
+applyHints();
+try { speechSynthesis.getVoices(); } catch(e){}
+
+newRound('order');
+</script>
+
+</body>
+</html>
