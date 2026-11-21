@@ -243,6 +243,111 @@ button:focus-visible{outline:3px solid var(--kw);outline-offset:3px}
 </div>
 
 <script>
+/* ===== Mrs Sim's Practice Logger — student picker + summary logging (same block in every tool) =====
+   - Students pick Class → Nickname once per device (shared by all tools on mrsmsim.github.io).
+   - Add ?share to the URL for colleagues: no picker, nothing saved.
+   - Rounds are queued on the device and sent when online. */
+const ML = (() => {
+  const LOG_URL = 'https://script.google.com/macros/s/AKfycbxJVYo_NyivesVHcDL_iUPE2ts8uJCOMpuH3vLR8jP8oacPWkY4ZKOAccEy28CvgjvA/exec';
+  const K_ID = 'mrsSim.detective', K_Q = 'mrsSim.logQueue', K_R = 'mrsSim.roster';
+  const SHARE = new URLSearchParams(location.search).has('share');
+  let guest = false, roster = null, flushing = false, after = null;
+  const get = (k, f) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : f; } catch (e) { return f; } };
+  const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+  const css = document.createElement('style');
+  css.textContent = `
+  .ml-modal{position:fixed;inset:0;background:rgba(30,30,45,.55);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px;font-family:inherit}
+  .ml-modal.show{display:flex}
+  .ml-box{background:#FFFDF8;border-radius:20px;max-width:620px;width:100%;max-height:90vh;overflow:auto;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center;color:#2E2A3A}
+  .ml-box h2{margin:0 0 6px;font-size:1.5rem}
+  .ml-box p{margin:0 0 14px}
+  .ml-grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:14px}
+  .ml-grid button{font:inherit;font-size:1.15rem;font-weight:700;padding:14px 18px;min-width:120px;border-radius:14px;border:2px solid #6B5B95;background:#fff;color:#4A3D6E;cursor:pointer}
+  .ml-grid button:hover,.ml-grid button:focus{background:#E3A340;border-color:#C97F1E;color:#fff;outline:none}
+  .ml-link{font:inherit;background:none;border:none;color:#6B5B95;text-decoration:underline;cursor:pointer;margin:4px 8px}
+  .ml-msg{font-weight:700;color:#C0473D;min-height:1.2em}`;
+  document.head.appendChild(css);
+
+  const modal = document.createElement('div');
+  modal.className = 'ml-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.innerHTML = `<div class="ml-box">
+      <h2>👋 Who is practising today?</h2>
+      <p class="ml-step">Tap your class.</p>
+      <div class="ml-grid"></div>
+      <div class="ml-msg"></div>
+      <button type="button" class="ml-link ml-back" hidden>← Back to classes</button>
+      <button type="button" class="ml-link ml-guest">Just play — don't save my progress</button>
+    </div>`;
+  document.body.appendChild(modal);
+  const $m = s => modal.querySelector(s);
+
+  function buttons(list, onPick) {
+    const g = $m('.ml-grid'); g.innerHTML = '';
+    list.forEach(t => { const b = document.createElement('button'); b.type = 'button'; b.textContent = t; b.onclick = () => onPick(t); g.appendChild(b); });
+  }
+  async function loadRoster() {
+    try {
+      const r = await fetch(LOG_URL + '?action=roster'); const d = await r.json();
+      if (d && d.roster) { roster = d.roster; put(K_R, roster); return; }
+    } catch (e) {}
+    roster = get(K_R, null);
+  }
+  function showClasses() {
+    $m('.ml-step').textContent = 'Tap your class.'; $m('.ml-back').hidden = true;
+    const classes = roster ? Object.keys(roster) : [];
+    $m('.ml-msg').textContent = classes.length ? '' : 'Cannot load the class list. Check the internet, or tap "Just play".';
+    buttons(classes, cls => {
+      $m('.ml-step').textContent = `Class ${cls}: tap your name.`; $m('.ml-back').hidden = false;
+      buttons(roster[cls], nick => { put(K_ID, { cls, nick }); guest = false; close(); });
+    });
+  }
+  function close() { modal.classList.remove('show'); const cb = after; after = null; if (cb) cb(); }
+  async function open(cb) {
+    after = cb || null; modal.classList.add('show');
+    $m('.ml-msg').textContent = 'Loading…'; $m('.ml-grid').innerHTML = '';
+    roster = null; await loadRoster(); showClasses();
+  }
+  $m('.ml-back').onclick = showClasses;
+  $m('.ml-guest').onclick = () => { guest = true; close(); };
+
+  function who() { return (SHARE || guest) ? null : get(K_ID, null); }
+  function needsPick() { return !SHARE && !guest && !get(K_ID, null); }
+  function label() {
+    if (SHARE) return 'Practice mode';
+    if (guest) return 'Visitor (not saved)';
+    const w = get(K_ID, null); return w ? `${w.nick} (${w.cls})` : 'Choose your name';
+  }
+  function forget() { try { localStorage.removeItem(K_ID); } catch (e) {} guest = false; }
+
+  // skills: { "Sub-skill name": [true, false, ...] }  — first-try results for this round
+  function logRound(tool, skills) {
+    const w = who(); if (!w) return;
+    const clean = {}; Object.keys(skills).forEach(k => { if (skills[k] && skills[k].length) clean[k] = skills[k].map(Boolean); });
+    if (!Object.keys(clean).length) return;
+    const q = get(K_Q, []);
+    q.push({ tool, cls: w.cls, nick: w.nick, roundId: Date.now() + '-' + Math.random().toString(36).slice(2, 8), skills: clean });
+    put(K_Q, q); flush();
+  }
+  async function flush() {
+    if (flushing) return; flushing = true;
+    let q = get(K_Q, []);
+    while (q.length) {
+      try {
+        await fetch(LOG_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(q[0]) });
+        q.shift(); put(K_Q, q);
+      } catch (e) { break; }
+    }
+    flushing = false;
+  }
+  window.addEventListener('online', flush);
+  flush();
+  return { SHARE, open, needsPick, label, who, forget, logRound, isGuest: () => guest };
+})();
+</script>
+<script>
 // a = what happened FIRST, b = what happened SECOND. s = the swapped order is clearly silly.
 const PAIRS = [
   {a:{e:'🚿',l:'take a shower',c:'I showered'},            b:{e:'🌳',l:'go to the park',c:'I went to the park'},  s:false},
@@ -305,7 +410,10 @@ const blankP = () => ({name:'', modes:{}, recent:[]});
 let P = blankP();
 try { const j = JSON.parse(localStorage.getItem('wcf-progress') || 'null'); if (j && typeof j==='object') P = Object.assign(blankP(), j); } catch(e){}
 function saveP(){ try { localStorage.setItem('wcf-progress', JSON.stringify(P)); } catch(e){} }
+const LOG_TOOL = 'Which Came First';
+let RND = []; // first-try results this round (for the Practice Logger)
 function logAnswer(ok, tags){
+  RND.push(!!ok);
   P.recent.push({ok, tags: ok ? [] : (tags || [])});
   if (P.recent.length > 12) P.recent = P.recent.slice(-12);
   saveP();
@@ -321,7 +429,7 @@ function renderBand(){
     else { st='red'; label='Needs help'; }
   }
   $('#band').className = 'band ' + st;
-  $('#who').textContent = P.name || 'Type your name';
+  $('#who').textContent = ML.label();
   $('#state').textContent = label;
   $('#modes').innerHTML = Object.keys(MODES).map(m => {
     const d = P.modes[m], cur = S && S.mode===m;
@@ -341,13 +449,14 @@ $('#reset').addEventListener('click', e => {
   const b = e.currentTarget;
   if (b.classList.contains('armed')){
     clearTimeout(resetTimer); b.classList.remove('armed'); b.textContent = 'New student';
-    P = blankP(); saveP(); newRound('order');
+    P = blankP(); saveP(); ML.forget(); newRound('order');
   } else {
     b.classList.add('armed'); b.textContent = 'Tap again to clear progress';
     resetTimer = setTimeout(() => { b.classList.remove('armed'); b.textContent = 'New student'; }, 3500);
   }
 });
 function newRound(mode){
+  RND = [];
   if (mode==='listen'){
     const qs = shuffle(PASSAGES).map(p => ({p, pos: shuffle([0,1,2,3])}));
     S = { mode, n:qs.length, max:qs.length, i:0, score:0, results:[], done:false, qs };
@@ -375,6 +484,7 @@ function next(){
     const d = P.modes[S.mode] || {rounds:0, best:0};
     d.rounds++; d.best = Math.max(d.best, starsFor(S.score, S.max));
     P.modes[S.mode] = d; saveP();
+    if (S.mode !== 'learn') ML.logRound(LOG_TOOL, {[MODES[S.mode]]: RND});
   }
   S.done ? render() : startQ();
 }
@@ -408,7 +518,7 @@ function renderStatus(){
 function render(){
   renderBand();
   renderStatus();
-  if (!P.name) return renderName();
+  if (ML.needsPick()) return renderName();
   if (S.done) return renderEnd();
   const q=S.qs[S.i];
   if (S.mode==='order') renderOrder(q);
@@ -656,12 +766,11 @@ function renderListen(q){
 /* ---------- Name ---------- */
 function renderName(){
   stage.innerHTML = `<div class="namebox">
-    <label class="nm-label" for="nm">Type your name to start</label>
-    <input class="winput" id="nm" type="text" maxlength="24" autocomplete="off" spellcheck="false">
-    <div class="actions"><button class="btn" type="button" data-act="setname">Start</button></div>
+    <p class="nm-label">Choose your name to start</p>
+    <div class="actions"><button class="btn" type="button" onclick="ML.open(() => render())">👋 Choose my name</button></div>
   </div>`;
   S.say = null;
-  const nm = document.getElementById('nm'); if (nm) nm.focus();
+  ML.open(() => render());
 }
 function setName(){
   const nm = document.getElementById('nm'); const v = nm ? nm.value.trim() : '';
